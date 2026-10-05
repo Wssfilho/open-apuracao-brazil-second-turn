@@ -7,6 +7,7 @@ import { BackButton } from './BackButton.js';
 import { Legend } from './Legend.js';
 import { MapModes } from './MapModes.js';
 import { Timeline } from './Timeline.js';
+import { SenateSeats } from './SenateSeats.js';
 
 /** The places the map is currently colouring, the units it can switch between, and what to call them. */
 function mapView({ geo, snapshot, route, municipality, zoneRows }) {
@@ -31,29 +32,35 @@ function mapView({ geo, snapshot, route, municipality, zoneRows }) {
 
 export function MapStage({ stageRef, geo, snapshot, route, municipality, zoneRows, theme, clock, flipped }) {
   const { uf } = route;
+  const senate = route.office === 'Senado';
+  const chairs = senate && route.senateView !== 'mapa';
   const view = useMemo(() => mapView({ geo, snapshot, route, municipality, zoneRows }), [geo, snapshot, uf, municipality, zoneRows, route.unit]);
   const sides = useMemo(() => tally(view.rows), [view]);
   // An open state has no state-level map: fall back to municipalities there.
   const unit = view.units.includes(view.unit) ? view.unit : 'municipios';
 
-  return html`<section class="stage" ref=${stageRef} aria-label="Mapa interativo">
+  return html`<section class=${'stage' + (chairs ? ' stage-senate' : '')} ref=${stageRef} aria-label=${chairs ? 'Cadeiras do Senado' : 'Mapa interativo'}>
     <header class="stage-head">
       <div class="stage-place">
         ${uf && html`<${BackButton} to=${municipality ? STATES[uf][0] : 'Brasil'} article=${municipality ? '' : 'o '} onClick=${route.back}/>`}
-        <h2 class="stage-title">${municipality?.name || (uf ? STATES[uf][0] : 'Brasil')}${municipality && html`<span>${STATES[uf][0]}</span>`}</h2>
-        <p class="stage-hint">${view.hint}</p>
+        <h2 class="stage-title">${chairs ? 'Senado Federal' : municipality?.name || (uf ? STATES[uf][0] : 'Brasil')}${!chairs && municipality && html`<span>${STATES[uf][0]}</span>`}</h2>
+        <p class="stage-hint">${chairs ? 'Selecione uma cadeira para explorar o estado.' : view.hint}</p>
       </div>
-      <${MapModes} units=${view.units} unit=${unit} metric=${route.metric} onUnit=${route.setUnit} onMetric=${route.setMetric}/>
+      ${senate && html`<div class="segmented" role="group" aria-label="Visualização do Senado">
+        <button aria-pressed=${chairs} onClick=${() => route.setSenateView('cadeiras')}>Cadeiras</button>
+        <button aria-pressed=${!chairs} onClick=${() => route.setSenateView('mapa')}>Mapa</button>
+      </div>`}
+      ${!chairs && html`<${MapModes} units=${view.units} unit=${unit} metric=${route.metric} onUnit=${route.setUnit} onMetric=${route.setMetric}/>`}
     </header>
 
-    <div class="map-area">
+    ${chairs ? html`<${SenateSeats} states=${snapshot.states} uf=${uf} onState=${route.openState} onMap=${() => route.setSenateView('mapa')}/>` : html`<div class="map-area">
       <${ElectionMap} geo=${geo} theme=${theme} unit=${unit} metric=${route.metric} flipped=${flipped}
         results=${snapshot.results} stateResults=${snapshot.states}
         uf=${uf} municipality=${municipality} zoneRows=${zoneRows} selectedZone=${route.zone}
         onState=${route.openState} onMunicipality=${route.openMunicipality} onZone=${route.selectZone}/>
     </div>
 
-    <${Legend} theme=${theme} metric=${route.metric} bubbles=${unit === 'eleitorado'} tally=${sides} noun=${view.noun}/>
+    <${Legend} theme=${theme} metric=${route.metric} bubbles=${unit === 'eleitorado'} tally=${sides} noun=${view.noun}/>`}
     <${Timeline} clock=${clock}/>
   </section>`;
 }

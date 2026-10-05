@@ -15,6 +15,7 @@ import { Scoreboard } from './components/Scoreboard.js';
 import { SearchDialog } from './components/SearchDialog.js';
 import { SidePanel } from './components/SidePanel.js';
 import { TopBar } from './components/TopBar.js';
+import { SenateScoreboard } from './components/SenateSeats.js';
 
 // The capital's presidential zones have hand-set shares, so the state calibration skips it.
 const FIXED_CAPITAL = '3550308';
@@ -104,7 +105,8 @@ export function App({ geo }) {
       onSearch=${() => setSearching(true)} onDownload=${saveMap}/>
 
     <main>
-      <${Scoreboard} office=${office} scope=${scope.name} result=${scope.result} majorityRule=${office === OFFICES[0] && !uf}/>
+      ${office === 'Senado' ? html`<${SenateScoreboard} scope=${scope.name} result=${scope.result}/>`
+        : html`<${Scoreboard} office=${office} scope=${scope.name} result=${scope.result} majorityRule=${office === OFFICES[0] && !uf}/>`}
       <div class=${'workspace' + (wide ? ' is-wide' : '')}>
         ${wide && html`<aside class="insights-column" aria-label="Andamento da apuração">${insights}</aside>`}
         <${MapStage} stageRef=${stage} geo=${geo} snapshot=${snapshot} route=${navigation}

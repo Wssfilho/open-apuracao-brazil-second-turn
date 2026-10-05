@@ -24,16 +24,18 @@ function parse(geo) {
     unit: MAP_UNITS.includes(params.get('mapa')) ? params.get('mapa') : MAP_UNITS[0],
     metric: MAP_METRICS.includes(params.get('cor')) ? params.get('cor') : MAP_METRICS[0],
     replay,
+    senateView: params.get('vista') === 'mapa' ? 'mapa' : 'cadeiras',
   };
 }
 
-function toHash({ uf, municipalityId, zone, office, unit, metric, replay }) {
+function toHash({ uf, municipalityId, zone, office, unit, metric, replay, senateView }) {
   const path = [uf, municipalityId, municipalityId && zone != null ? zone : null].filter(part => part != null).join('/');
   const params = new URLSearchParams();
   if (office !== OFFICES[0]) params.set('cargo', normalize(office));
   if (replay != null) params.set('hora', `${Math.floor(replay / 60)}h${String(replay % 60).padStart(2, '0')}`);
   if (unit !== MAP_UNITS[0]) params.set('mapa', unit);
   if (metric !== MAP_METRICS[0]) params.set('cor', metric);
+  if (senateView === 'mapa') params.set('vista', 'mapa');
   const query = params.toString();
   return path || query ? `#${path}${query ? '?' + query : ''}` : '';
 }
@@ -69,13 +71,14 @@ export function useRoute(geo) {
       openState,
       openMunicipality: id => {
         const municipality = geo.byId.get(id);
-        if (municipality) go({ uf: municipality.uf, municipalityId: id, zone: null }, { push: true });
+        if (municipality) go({ uf: municipality.uf, municipalityId: id, zone: null, senateView: 'mapa' }, { push: true });
       },
       back: () => openState(latest.current.municipalityId ? latest.current.uf : null),
       selectZone: zone => go({ zone }),
       setOffice: office => go({ office }),
       setUnit: unit => go({ unit }),
       setMetric: metric => go({ metric }),
+      setSenateView: senateView => go({ senateView }),
       setReplay: replay => go({ replay }),
     };
   }, [geo]);
