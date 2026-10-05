@@ -3,6 +3,7 @@ import { html } from '../lib/html.js';
 import { percent, leaderShare } from '../lib/format.js';
 import { CANDIDATES, resultColor } from '../data/mocks.js';
 import { Icon } from '../components/Icon.js';
+import { useMediaQuery } from '../hooks/useMediaQuery.js';
 import { cameraFor } from './geography.js';
 import { MAP_THEMES, inkOn } from './mapTheme.js';
 
@@ -13,6 +14,7 @@ const LABEL_NUDGE = { DF: [3, -3], GO: [-7, 5] };
 const DRAG_THRESHOLD = 5;
 const ZOOM_STEP = 1.55;
 const CAMERA_MS = 520;
+const FADE_MS = 360;
 // Bubble mode: the largest electorate (São Paulo) gets a radius of 6% of the country's width.
 const LARGEST_ELECTORATE = 9.2e6;
 const LARGEST_BUBBLE = .06;
@@ -31,6 +33,8 @@ const calloutPosition = (index, size) => [size.width * .882, size.height * .29 +
  */
 export function ElectionMap({ geo, results, stateResults, uf, municipality, zoneRows, selectedZone, theme, unit, metric, flipped, onState, onMunicipality, onZone }) {
   const root = useRef(), canvas = useRef(), camera = useRef(), target = useRef(), frame = useRef(), drawRef = useRef();
+  const previousCanvas = useRef(), fade = useRef();
+  const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
   const interaction = useRef({}), touches = useRef(new Map());
   const [size, setSize] = useState({ width: 500, height: 500 });
   const [hover, setHover] = useState(null), [view, setView] = useState(null);
@@ -187,9 +191,8 @@ export function ElectionMap({ geo, results, stateResults, uf, municipality, zone
   const animate = () => {
     cancelAnimationFrame(frame.current);
     const from = { ...camera.current }, to = { ...target.current }, start = performance.now();
-    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
     const tick = now => {
-      const t = reduced ? 1 : Math.min(1, (now - start) / CAMERA_MS), ease = 1 - (1 - t) ** 4;
+      const t = matchMedia('(prefers-reduced-motion: reduce)').matches ? 1 : Math.min(1, (now - start) / CAMERA_MS), ease = 1 - (1 - t) ** 4;
       setCamera({ k: from.k + (to.k - from.k) * ease, x: from.x + (to.x - from.x) * ease, y: from.y + (to.y - from.y) * ease });
       if (t < 1) frame.current = requestAnimationFrame(tick);
     };
@@ -198,6 +201,49 @@ export function ElectionMap({ geo, results, stateResults, uf, municipality, zone
 
   // Fly to a new place, but snap when only the frame was resized.
   const place = `${uf}/${municipality?.id}`, lastPlace = useRef(place);
+  const lastSize = useRef(size);
+  const stopFade = () => {
+    fade.current?.cancel();
+    fade.current = null;
+  };
+
+  // Keep a bitmap of the outgoing view. The browser fades it without repainting
+  // all 5,570 municipalities on every frame, while the live map stays interactive.
+  useLayoutEffect(() => {
+    const current = canvas.current, previous = previousCanvas.current;
+    const resized = lastSize.current.width !== size.width || lastSize.current.height !== size.height;
+    lastSize.current = size;
+    if (!camera.current || reducedMotion || resized) {
+      stopFade();
+      return;
+    }
+
+    const snapshot = document.createElement('canvas');
+    snapshot.width = current.width;
+    snapshot.height = current.height;
+    const ctx = snapshot.getContext('2d');
+    ctx.drawImage(current, 0, 0);
+    // A rapid second change starts from what is currently visible, avoiding a flash.
+    if (fade.current) {
+      ctx.globalAlpha = Number(getComputedStyle(previous).opacity);
+      ctx.drawImage(previous, 0, 0);
+    }
+    stopFade();
+    previous.width = snapshot.width;
+    previous.height = snapshot.height;
+    previous.getContext('2d').drawImage(snapshot, 0, 0);
+    const animation = previous.animate([{ opacity: 1 }, { opacity: 0 }], {
+      duration: FADE_MS,
+      easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+    });
+    fade.current = animation;
+    animation.onfinish = () => {
+      if (fade.current === animation) stopFade();
+    };
+  }, [results, stateResults, zoneRows, selectedZone, theme, unit, metric, place, size.width, size.height, reducedMotion]);
+
+  useEffect(() => () => stopFade(), []);
+
   useLayoutEffect(() => {
     target.current = cameraFor(geo, uf, municipality, size.width, size.height);
     if (!camera.current || lastPlace.current === place) setCamera({ ...target.current });
@@ -235,20 +281,27 @@ export function ElectionMap({ geo, results, stateResults, uf, municipality, zone
   };
 
   const zoom = (factor, anchor = [size.width / 2, size.height / 2], smooth = true) => {
+    stopFade();
     const old = camera.current, base = cameraFor(geo, uf, municipality, size.width, size.height);
     const k = Math.max(base.k * .65, Math.min(base.k * 10, old.k * factor));
     target.current = { k, x: anchor[0] - (anchor[0] - old.x) * (k / old.k), y: anchor[1] - (anchor[1] - old.y) * (k / old.k) };
     if (smooth) animate();
-    else setCamera({ ...target.current });
+    else {
+      cancelAnimationFrame(frame.current);
+      setCamera({ ...target.current });
+    }
   };
 
   const recenter = () => {
+    stopFade();
     target.current = cameraFor(geo, uf, municipality, size.width, size.height);
     animate();
   };
 
   const pointerDown = event => {
     if (event.button !== 0) return;
+    stopFade();
+    cancelAnimationFrame(frame.current);
     const p = position(event);
     touches.current.set(event.pointerId, p);
     interaction.current = { start: p, previous: p, dragging: false };
@@ -327,6 +380,7 @@ export function ElectionMap({ geo, results, stateResults, uf, municipality, zone
       class=${interaction.current.dragging ? 'dragging' : ''}
       onPointerDown=${pointerDown} onPointerMove=${pointerMove} onPointerUp=${pointerUp}
       onPointerCancel=${pointerCancel} onPointerLeave=${() => setHover(null)}></canvas>
+    <canvas ref=${previousCanvas} class="map-transition" aria-hidden="true"></canvas>
 
     ${!uf && html`<div class="state-labels" role="group" aria-label="Selecionar um estado">
       ${Object.values(geo.states).filter(state => !CALLOUTS.includes(state.uf)).map(state => {

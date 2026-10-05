@@ -3,6 +3,12 @@
   position: relative;
   aspect-ratio: 1 / 1;
   overflow: hidden;
+  animation: map-enter 520ms var(--ease-out);
+}
+
+@keyframes map-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .map-frame canvas {
@@ -14,6 +20,13 @@
 
 .map-frame canvas.dragging {
   cursor: grabbing;
+}
+
+.map-frame .map-transition {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .state-labels {
@@ -34,6 +47,7 @@
   line-height: 1;
   font-variant-numeric: tabular-nums;
   pointer-events: auto;
+  transition: color 360ms var(--ease-out), background-color 360ms var(--ease-out);
 }
 
 .state-label b,
@@ -124,6 +138,12 @@
   color: var(--bg);
   font-size: var(--text-sm);
   pointer-events: none;
+  animation: map-tooltip-enter 140ms var(--ease-out);
+}
+
+@keyframes map-tooltip-enter {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .map-tooltip strong {
